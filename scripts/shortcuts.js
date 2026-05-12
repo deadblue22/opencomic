@@ -990,7 +990,7 @@ function loadShortcuts()
 				'Ctrl+5': 'fade',
 				'Ctrl+M': 'readingManga',
 				'Ctrl+W': 'readingWebtoon',
-				'Ctrl+D': process.platform == 'win32' ? 'moveCurrentImageToTrash' : 'doublePage',
+				'Ctrl+D': 'doublePage',
 				'Ctrl+H': 'doNotApplyToHorizontals',
 				'Ctrl+B': 'blankPage',
 				'Ctrl+A': 'adjustToWidth',
@@ -1013,7 +1013,8 @@ function loadShortcuts()
 				'Z': 'resetZoom',
 				'Esc': 'goBack',
 				'Backspace': 'goBack',
-				'Meta+D': 'moveCurrentImageToTrash',
+				'Delete': 'moveCurrentImageToTrash',
+				'Meta+Backspace': 'moveCurrentImageToTrash',
 				'Meta+Z': 'undoMoveCurrentImageToTrash',
 				'Ctrl+Z': 'undoMoveCurrentImageToTrash',
 				'Ctrl+S': 'saveImage',
@@ -1126,11 +1127,16 @@ function loadShortcuts()
 		}
 
 		// Set not configured shortcuts
+		// A default shortcut is applied when the key combination is not taken in saved
+		// config. The previous check also required the action to be absent from
+		// `actionsConfigured`, which prevented newly introduced default key bindings
+		// (e.g. `Delete` → `moveCurrentImageToTrash`) from being installed on upgrade
+		// once the user had ever opened the shortcuts editor.
 		for(let shortcut in shortcuts[section]._shortcuts)
 		{
 			let action = shortcuts[section]._shortcuts[shortcut];
 
-			if(!inArray(action, _shortcuts[section]?.actionsConfigured || []) && !_shortcuts[section]?.shortcuts[shortcut])
+			if(!_shortcuts[section]?.shortcuts[shortcut])
 				shortcuts[section].shortcuts[shortcut] = action;
 		}
 
