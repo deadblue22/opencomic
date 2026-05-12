@@ -275,6 +275,8 @@ function loadShortcuts()
 				'saveImage',
 				'saveAllImages',
 				'copyImage',
+				'moveCurrentImageToTrash',
+				'undoMoveCurrentImageToTrash',
 				'saveBookmarksImages',
 				'saveAllBookmarksImages',
 				'resetZoom',
@@ -360,6 +362,8 @@ function loadShortcuts()
 						'saveImage',
 						'saveAllImages',
 						'copyImage',
+						'moveCurrentImageToTrash',
+						'undoMoveCurrentImageToTrash',
 						'saveBookmarksImages',
 						'saveAllBookmarksImages',
 					],
@@ -899,6 +903,23 @@ function loadShortcuts()
 						return true;
 					},
 				},
+				moveCurrentImageToTrash: {
+					name: language.global.contextMenu.moveToTrash,
+					function: function(event){
+						reading.contextMenu.moveCurrentImageToTrash();
+						return true;
+					},
+				},
+				undoMoveCurrentImageToTrash: {
+					name: language.buttons.undo+' '+language.global.contextMenu.moveToTrash,
+					function: function(event){
+						if(!reading.contextMenu.hasPendingMoveToTrash())
+							return false;
+
+						reading.contextMenu.undoLastMoveCurrentImageToTrash();
+						return true;
+					},
+				},
 				saveBookmarksImages: {
 					name: language.global.contextMenu.saveBookmarksImages,
 					function: function(event){
@@ -969,7 +990,7 @@ function loadShortcuts()
 				'Ctrl+5': 'fade',
 				'Ctrl+M': 'readingManga',
 				'Ctrl+W': 'readingWebtoon',
-				'Ctrl+D': 'doublePage',
+				'Ctrl+D': process.platform == 'win32' ? 'moveCurrentImageToTrash' : 'doublePage',
 				'Ctrl+H': 'doNotApplyToHorizontals',
 				'Ctrl+B': 'blankPage',
 				'Ctrl+A': 'adjustToWidth',
@@ -992,6 +1013,9 @@ function loadShortcuts()
 				'Z': 'resetZoom',
 				'Esc': 'goBack',
 				'Backspace': 'goBack',
+				'Meta+D': 'moveCurrentImageToTrash',
+				'Meta+Z': 'undoMoveCurrentImageToTrash',
+				'Ctrl+Z': 'undoMoveCurrentImageToTrash',
 				'Ctrl+S': 'saveImage',
 				'Ctrl+C': 'copyImage',
 				'F11': 'fullscreen',

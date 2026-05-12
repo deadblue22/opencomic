@@ -1,6 +1,9 @@
 
 let elementFromPointIndex = false;
 let blankPage = false;
+let movingCurrentImageToTrash = false;
+let pendingMoveToTrash = {};
+let pendingMoveToTrashStack = [];
 
 function show(event, gamepad = false)
 {
@@ -94,6 +97,235 @@ function getCurrentImage(onlyElementFromPoint = false, notElementFromPoint = fal
 
 	const image = reading.getImageByPosition(reading.currentImagePosition(), 0);
 	return image || false;
+}
+
+function canMoveCurrentImageToTrash(image)
+{
+	const imagePath = image?.path || false;
+
+	if(!onReading || !imagePath)
+		return false;
+
+	if(reading.isCanvas() || reading.isEbook() || reading.doublePage.active())
+		return false;
+
+	if(fileManager.isServer(imagePath) || fileManager.lastCompressedFile(p.dirname(imagePath)))
+		return false;
+
+	if(/app\.asar\.unpacked/.test(imagePath) || !compatible.image(imagePath) || !fs.existsSync(imagePath))
+		return false;
+
+	return true;
+}
+
+function getImageAtPosition(position, currentPath)
+{
+	const images = reading.images();
+	const imagesData = reading.imagesData();
+
+	for(let key in images)
+	{
+		const image = images[key];
+
+		if(image.path !== currentPath && imagesData[key]?.position == position)
+			return image;
+	}
+
+	return false;
+}
+
+function getMoveToTrashTargetImage(image)
+{
+	const position = reading.currentImagePosition();
+
+	return getImageAtPosition(position + 1, image.path) || getImageAtPosition(position - 1, image.path);
+}
+
+function pendingMoveToTrashPath(id, imagePath)
+{
+	return p.join(tempFolder, 'pending-trash', id, p.basename(imagePath));
+}
+
+function addTemporaryUsage(path)
+{
+	const tmpUsage = storage.get('tmpUsage') || {};
+	if(!tmpUsage[path]) tmpUsage[path] = {};
+	tmpUsage[path].lastAccess = app.time();
+	storage.set('tmpUsage', tmpUsage);
+}
+
+function removeTemporaryUsage(path)
+{
+	const tmpUsage = storage.get('tmpUsage') || {};
+	delete tmpUsage[path];
+	storage.set('tmpUsage', tmpUsage);
+}
+
+function moveFileSync(from, to)
+{
+	fs.mkdirSync(p.dirname(to), {recursive: true});
+
+	try
+	{
+		fs.renameSync(from, to);
+	}
+	catch(error)
+	{
+		if(error.code !== 'EXDEV')
+			throw error;
+
+		const stat = fs.statSync(from);
+		fs.copyFileSync(from, to);
+		fs.utimesSync(to, stat.atime, stat.mtime);
+		fs.unlinkSync(from);
+	}
+}
+
+function deletePendingMoveToTrash(id)
+{
+	const pending = pendingMoveToTrash[id];
+	if(!pending) return false;
+
+	if(pending.timeout)
+		clearTimeout(pending.timeout);
+	delete pendingMoveToTrash[id];
+	pendingMoveToTrashStack = pendingMoveToTrashStack.filter((pendingId) => pendingId !== id);
+
+	return pending;
+}
+
+function schedulePendingMoveToTrash(id)
+{
+	const pending = pendingMoveToTrash[id];
+	if(!pending || pending.timeout) return;
+
+	pending.timeout = setTimeout(function(){
+		commitPendingMoveToTrash(id).catch(function(error){console.error(error)});
+	}, 6000);
+}
+
+async function commitPendingMoveToTrash(id)
+{
+	const pending = deletePendingMoveToTrash(id);
+	if(!pending) return false;
+
+	removeTemporaryUsage(pending.tempPath);
+
+	if(fs.existsSync(pending.tempPath))
+		await electron.ipcRenderer.invoke('move-to-trash', pending.tempPath);
+
+	fs.rm(p.dirname(pending.tempPath), {recursive: true, force: true}, function(){});
+
+	return true;
+}
+
+async function undoMoveCurrentImageToTrash(id)
+{
+	const pending = deletePendingMoveToTrash(id);
+	if(!pending) return false;
+
+	removeTemporaryUsage(pending.tempPath);
+
+	if(!fs.existsSync(pending.tempPath))
+		return false;
+
+	const restorePath = fs.existsSync(pending.originalPath) ? fileManager.genearteFilePath(p.dirname(pending.originalPath), p.basename(pending.originalPath)) : pending.originalPath;
+	moveFileSync(pending.tempPath, restorePath);
+	fs.rm(p.dirname(pending.tempPath), {recursive: true, force: true}, function(){});
+
+	events.closeSnackbar();
+	await dom.openComic(true, restorePath, pending.mainPath);
+
+	return true;
+}
+
+function hasPendingMoveToTrash()
+{
+	return pendingMoveToTrashStack.some((id) => pendingMoveToTrash[id]);
+}
+
+async function undoLastMoveCurrentImageToTrash()
+{
+	for(let i = pendingMoveToTrashStack.length - 1; i >= 0; i--)
+	{
+		const id = pendingMoveToTrashStack[i];
+
+		if(pendingMoveToTrash[id])
+			return undoMoveCurrentImageToTrash(id);
+	}
+
+	return false;
+}
+
+async function moveCurrentImageToTrash()
+{
+	if(movingCurrentImageToTrash)
+		return false;
+
+	const image = getCurrentImage(false, true);
+
+	if(!canMoveCurrentImageToTrash(image))
+		return false;
+
+	const targetImage = getMoveToTrashTargetImage(image);
+	const currentPath = reading.readingCurrentPath();
+	const mainPath = dom.history.mainPath;
+	const id = sha1(image.path+'-'+Date.now()+'-'+Math.random());
+	const tempPath = pendingMoveToTrashPath(id, image.path);
+
+	movingCurrentImageToTrash = true;
+
+	try
+	{
+		moveFileSync(image.path, tempPath);
+		addTemporaryUsage(tempPath);
+
+		pendingMoveToTrash[id] = {
+			originalPath: image.path,
+			tempPath,
+			mainPath,
+			timeout: false,
+		};
+		pendingMoveToTrashStack.push(id);
+
+		if(targetImage && fs.existsSync(targetImage.path))
+			await dom.openComic(true, targetImage.path, mainPath);
+		else
+			await dom.loadIndexPage(true, currentPath, false, false, mainPath, false, true);
+
+		events.snackbar({
+			key: 'moveCurrentImageToTrash-'+id,
+			text: language.global.contextMenu.moveToTrash,
+			duration: 6,
+			buttons: [
+				{
+					text: language.buttons.undo,
+					function: 'reading.contextMenu.undoMoveCurrentImageToTrash(\''+id+'\');',
+				},
+			],
+		});
+
+		schedulePendingMoveToTrash(id);
+
+		return true;
+	}
+	catch(error)
+	{
+		console.error(error);
+		return false;
+	}
+	finally
+	{
+		movingCurrentImageToTrash = false;
+	}
+}
+
+async function flushPendingMoveToTrash()
+{
+	const ids = Object.keys(pendingMoveToTrash);
+
+	for(const id of ids)
+		await commitPendingMoveToTrash(id);
 }
 
 function setAsPoster()
@@ -462,6 +694,11 @@ module.exports = {
 	saveBookmarksImages: saveBookmarksImages,
 	saveAllBookmarksImages: saveAllBookmarksImages,
 	copyImageToClipboard: copyImageToClipboard,
+	moveCurrentImageToTrash: moveCurrentImageToTrash,
+	undoMoveCurrentImageToTrash: undoMoveCurrentImageToTrash,
+	undoLastMoveCurrentImageToTrash: undoLastMoveCurrentImageToTrash,
+	hasPendingMoveToTrash: hasPendingMoveToTrash,
+	flushPendingMoveToTrash: flushPendingMoveToTrash,
 	addBlankPage: addBlankPage,
 	removeBlankPage: removeBlankPage,
 };
