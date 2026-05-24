@@ -234,7 +234,10 @@ function metadataPathName(file, force = false)
 
 async function readFilesIndexPage(path, mainPath, fromGoBack, notAutomaticBrowsing, fromGoForwards)
 {
-	const file = fileManager.file(path);
+	const folderSortAndView = getFolderSortAndView(path);
+	const fileSortConfig = folderSortAndView ? {sortAndView: folderSortAndView} : true;
+
+	const file = fileManager.file(path, {sort: fileSortConfig});
 	let files;
 
 	try 
@@ -431,7 +434,8 @@ async function loadFilesIndexPage(files, file, animation, path, keepScroll, main
 
 		}, file);
 
-		let visibleItems = calculateVisibleItems(config.view, keepScroll);
+		const view = handlebarsContext.page.view || config.view;
+		let visibleItems = calculateVisibleItems(view, keepScroll);
 
 		for(let i = 0, len = files.length; i < len; i++)
 		{
@@ -458,7 +462,7 @@ async function loadFilesIndexPage(files, file, animation, path, keepScroll, main
 			}
 			else if(file.folder || file.compressed)
 			{
-				let images = await getFolderThumbnails(filePath, false, i, visibleItems.start, visibleItems.end, config.view);
+				let images = await getFolderThumbnails(filePath, false, i, visibleItems.start, visibleItems.end, view);
 
 				pathFiles.push({
 					sha: file.sha,
@@ -552,7 +556,7 @@ async function loadFilesIndexPage(files, file, animation, path, keepScroll, main
 
 	events.events();
 
-	return {files: pathFiles, readingProgress: readingProgress || {}, readingProgressCurrentPath: readingProgressCurrentPath || {}, html: template.load('index.content.right.'+config.view+'.html')};
+	return {files: pathFiles, readingProgress: readingProgress || {}, readingProgressCurrentPath: readingProgressCurrentPath || {}, html: template.load('index.content.right.'+(handlebarsContext.page.view || config.view)+'.html')};
 
 }
 
@@ -1095,7 +1099,7 @@ async function loadIndexPage(animation = true, path = false, content = false, ke
 		handlebarsContext.comicsIndex = false;
 		handlebarsContext.sortAndView = false;
 		handlebarsContext.comicsDeep2 = path.replace(new RegExp('^\s*'+pregQuote(mainPathR)), '').split(p.sep).length >= 2 ? true : false;
-		dom.setCurrentPageVars('browsing', {filter: _indexLabel?.filter || {}});
+		dom.setCurrentPageVars('browsing', {filter: _indexLabel?.filter || {}, folder: true, folderPath: path});
 
 		if(handlebarsContext.comicsDeep2)
 			showIfHasPrevOrNext(path, mainPath);
@@ -2096,7 +2100,49 @@ const defaultSortAndView = {
 	continueReading: true,
 	recentlyAdded: true,
 	viewModuleSize: 150,
+	foldersFirst: true,
+	compressedFirst: true,
+	fadeCompleted: true,
+	progressBar: true,
+	progressPages: true,
+	progressPercent: false,
 };
+
+// Build a stable labelKey for a sub-folder path used in config.sortAndView
+function folderLabelKey(path)
+{
+	if(!path) return false;
+	return 'folder-'+sha1(p.normalize(path));
+}
+
+// Default sort/view for a sub-folder, seeded from the global "browsing" config so the
+// first interaction matches what the user had configured globally.
+function defaultFolderSortAndView()
+{
+	return {
+		view: config.view,
+		sort: config.sort,
+		sortInvert: config.sortInvert,
+		viewModuleSize: config.viewModuleSize,
+		foldersFirst: config.foldersFirst,
+		compressedFirst: config.compressedFirst,
+		fadeCompleted: config.fadeCompleted,
+		progressBar: config.progressBar,
+		progressPages: config.progressPages,
+		progressPercent: config.progressPercent,
+		// boxes are not shown while browsing, but keep defaults populated to be safe
+		continueReading: true,
+		recentlyAdded: true,
+	};
+}
+
+// Resolve the effective sortAndView for a sub-folder path
+function getFolderSortAndView(path)
+{
+	const key = folderLabelKey(path);
+	if(!key) return false;
+	return config.sortAndView[key] || defaultFolderSortAndView();
+}
 
 function setCurrentPageVars(page, _indexLabel = false)
 {
@@ -2106,7 +2152,14 @@ function setCurrentPageVars(page, _indexLabel = false)
 
 	let key = page;
 
-	if(_indexLabel.has)
+	if(_indexLabel.folder && _indexLabel.folderPath)
+	{
+		labelKey = folderLabelKey(_indexLabel.folderPath);
+		key = 'folder';
+
+		sortAndView = config.sortAndView[labelKey] || defaultFolderSortAndView();
+	}
+	else if(_indexLabel.has)
 	{
 		if(_indexLabel.favorites)
 		{
@@ -2151,11 +2204,13 @@ function setCurrentPageVars(page, _indexLabel = false)
 		...{
 			key: key,
 			name: labelKey ? labelKey : page,
+			browsing: (key == 'browsing' || key == 'folder'),
+			recentlyOpened: (page == 'recently-opened'),
 			view: sortAndView ? sortAndView.view : config['view'+extraKey],
 			sort: sortAndView ? sortAndView.sort : config['sort'+extraKey],
 			sortInvert: sortAndView ? sortAndView.sortInvert : config['sortInvert'+extraKey],
-			foldersFirst: sortAndView ? true : (config['foldersFirst'+extraKey] || false),
-			compressedFirst: sortAndView ? true : (config['compressedFirst'+extraKey] || false),
+			foldersFirst: sortAndView ? (sortAndView.foldersFirst ?? true) : (config['foldersFirst'+extraKey] || false),
+			compressedFirst: sortAndView ? (sortAndView.compressedFirst ?? true) : (config['compressedFirst'+extraKey] || false),
 			boxes: (page == 'recently-opened' || page == 'browsing') ? false : true,
 			continueReading: sortAndView ? sortAndView.continueReading : config['continueReading'+extraKey],
 			recentlyAdded: sortAndView ? sortAndView.recentlyAdded : config['recentlyAdded'+extraKey],
@@ -2179,7 +2234,13 @@ function changeView(mode, page)
 	let labelKey = false;
 	let sortAndView = false;
 
-	if(/favorites|opds|masterFolder|server|label/.test(page))
+	if(/^folder-/.test(page))
+	{
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultFolderSortAndView();
+	}
+	else if(/favorites|opds|masterFolder|server|label/.test(page))
 	{
 		labelKey = page;
 
@@ -2233,7 +2294,13 @@ function changeViewModuleSize(size, end, page)
 	let labelKey = false;
 	let sortAndView = false;
 
-	if(/favorites|opds|masterFolder|server|label/.test(page))
+	if(/^folder-/.test(page))
+	{
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultFolderSortAndView();
+	}
+	else if(/favorites|opds|masterFolder|server|label/.test(page))
 	{
 		labelKey = page;
 
@@ -2280,7 +2347,13 @@ function changeSort(type, mode, page)
 	let labelKey = false;
 	let sortAndView = false;
 
-	if(/favorites|opds|masterFolder|server|label/.test(page))
+	if(/^folder-/.test(page))
+	{
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultFolderSortAndView();
+	}
+	else if(/favorites|opds|masterFolder|server|label/.test(page))
 	{
 		labelKey = page;
 
@@ -2308,6 +2381,22 @@ function changeSort(type, mode, page)
 			if(mode != sortAndView.sortInvert)
 			{
 				sortAndView.sortInvert = mode;
+				changed = true;
+			}
+		}
+		else if(type == 3)
+		{
+			if(mode != sortAndView.foldersFirst)
+			{
+				sortAndView.foldersFirst = mode;
+				changed = true;
+			}
+		}
+		else if(type == 4)
+		{
+			if(mode != sortAndView.compressedFirst)
+			{
+				sortAndView.compressedFirst = mode;
 				changed = true;
 			}
 		}
@@ -2379,7 +2468,13 @@ function changeConfig(key, value, page)
 	let labelKey = false;
 	let sortAndView = false;
 
-	if(/favorites|opds|masterFolder|server|label/.test(page))
+	if(/^folder-/.test(page))
+	{
+		labelKey = page;
+
+		sortAndView = config.sortAndView[labelKey] || defaultFolderSortAndView();
+	}
+	else if(/favorites|opds|masterFolder|server|label/.test(page))
 	{
 		labelKey = page;
 

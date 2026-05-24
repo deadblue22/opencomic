@@ -3701,11 +3701,12 @@ async function sort(files, options = {})
 		return;
 
 	const extraKey = options?.extraKey ?? '';
+	const override = options?.sortAndView;
 
-	const sort = config['sort'+extraKey];
-	const sortInvert = config['sortInvert'+extraKey];
-	const foldersFirst = config['foldersFirst'+extraKey];
-	const compressedFirst = config['compressedFirst'+extraKey];
+	const sort = override ? override.sort : config['sort'+extraKey];
+	const sortInvert = override ? override.sortInvert : config['sortInvert'+extraKey];
+	const foldersFirst = override ? (override.foldersFirst ?? config.foldersFirst) : config['foldersFirst'+extraKey];
+	const compressedFirst = override ? (override.compressedFirst ?? config.compressedFirst) : config['compressedFirst'+extraKey];
 
 	let order = '';
 	let key = 'name';
