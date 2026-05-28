@@ -1395,6 +1395,59 @@
 	}
 }
 
+.snackbars .snackbar.delete-undo.icon-only
+{
+	min-height: 40px;
+	width: 40px !important;
+	border-radius: 20px;
+}
+
+.snackbars .snackbar.delete-undo.icon-only .snackbar-foreground
+{
+	width: 40px;
+	height: 40px;
+	justify-content: center;
+	align-items: center;
+}
+
+.snackbars .snackbar.delete-undo.icon-only .snackbar-background
+{
+	border-radius: 20px;
+}
+
+.snackbars .snackbar.delete-undo.icon-only .snackbar-buttons
+{
+	width: 40px;
+	height: 40px;
+}
+
+.snackbars .snackbar.delete-undo.icon-only .simple-button.icon-only
+{
+	width: 40px;
+	height: 40px;
+	margin: 0px;
+	top: 0px;
+	transform: none;
+}
+
+.snackbars .snackbar.delete-undo.icon-only .simple-button.icon-only > div
+{
+	width: 40px;
+	height: 40px;
+	line-height: 40px;
+	padding: 0px;
+	border-radius: 20px;
+	display: block;
+	font-family: 'Material Icons';
+	font-size: 24px;
+	font-weight: normal;
+	font-style: normal;
+	letter-spacing: normal;
+	text-align: center;
+	white-space: nowrap;
+	font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
 .snackbars .snackbar.hide
 {
 	animation-fill-mode: forwards;

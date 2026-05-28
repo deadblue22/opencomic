@@ -295,11 +295,13 @@ async function moveCurrentImageToTrash()
 
 		events.snackbar({
 			key: 'moveCurrentImageToTrash-'+id,
-			text: language.global.contextMenu.moveToTrash,
+			className: 'delete-undo icon-only',
+			text: '',
 			duration: 6,
 			buttons: [
 				{
-					text: language.buttons.undo,
+					text: 'undo',
+					className: 'icon-only',
 					function: 'reading.contextMenu.undoMoveCurrentImageToTrash(\''+id+'\');',
 				},
 			],

@@ -1,6 +1,8 @@
-<div class="snackbar">
+<div class="snackbar{{#if snackbar.className}} {{snackbar.className}}{{/if}}">
 	<div class="snackbar-foreground">
+		{{#if snackbar.text}}
 		<div class="snackbar-text body-medium">{{snackbar.text}}</div>
+		{{/if}}
 		<div class="snackbar-buttons">
 			{{#each snackbar.buttons}}
 			<div class="simple-button transparent{{#if className}} {{className}}{{/if}}"{{#if right}} style="right: {{right}}px"{{/if}}>
