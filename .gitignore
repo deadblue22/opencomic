@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist[0-9]*/
 .dist/
 scripts/builded
 scripts/tracking/_tracking-sites-keys.js
@@ -11,3 +12,14 @@ PUBLISH.md
 
 # Unrar Exe
 unrar
+
+# Local notes / bugfix reports (kept locally, not committed)
+.memo/
+
+# Local build artifacts
+app-diag.asar
+app-diag.asar.unpacked/
+asar-extract/
+build-*.log
+*.log
+electron-builder.override.json
